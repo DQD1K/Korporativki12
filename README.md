@@ -17,6 +17,7 @@
 
 Написана функция отвечающая за фильтрацию и поиск
 
+
 func searchProducts(w http.ResponseWriter, r *http.Request) {
 	// Получаем параметры запроса
 	name := r.URL.Query().Get("name")
