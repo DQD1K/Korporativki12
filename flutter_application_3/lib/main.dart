@@ -64,12 +64,20 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _selectedIndex = 0;
   List<Product> products = [];
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _minPriceController = TextEditingController();
+  final TextEditingController _maxPriceController = TextEditingController();
+  String? name;
+  String? description;
 
   @override
   void initState() {
     super.initState();
     loadProducts();
     loadWishlist();
+    _searchController.addListener(_onSearchChanged);
+    _minPriceController.addListener(_onSearchChanged);
+    _maxPriceController.addListener(_onSearchChanged);
   }
 
   List<Product> get cartProducts => products.where((product) => product.isInCart).toList();
@@ -78,14 +86,11 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       final response = await http.get(Uri.parse('http://localhost:8080/products'));
 
-      print('Статус-код ответа: ${response.statusCode}');
-
       if (response.statusCode == 200) {
         final decodedResponse = utf8.decode(response.bodyBytes);
         final List<dynamic> data = json.decode(decodedResponse);
         setState(() {
           products = data.map((item) => Product.fromJson(item)).toList();
-          print(products);
         });
       } else {
         throw Exception('Не удалось загрузить продукты: ${response.statusCode}');
@@ -95,33 +100,60 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-Future<void> loadWishlist() async {
-  final userId = Supabase.instance.client.auth.currentUser ?.id;
-  if (userId == null) return;
+  Future<void> loadWishlist() async {
+    final userId = Supabase.instance.client.auth.currentUser ?.id;
+    if (userId == null) return;
 
-  try {
-    final response = await http.get(Uri.parse('http://localhost:8080/show-personal-whishlist?user_id=$userId'));
+    try {
+      final response = await http.get(Uri.parse('http://localhost:8080/show-personal-whishlist?user_id=$userId'));
 
-    if (response.statusCode == 200) {
-      final decodedResponse = utf8.decode(response.bodyBytes);
-      final List<dynamic> wishlistData = json.decode(decodedResponse);
+      if (response.statusCode == 200) {
+        final decodedResponse = utf8.decode(response.bodyBytes);
+        final List<dynamic> wishlistData = json.decode(decodedResponse);
 
-      // Создаем список продуктов из полученных данных
-      List<Product> wishlistProducts = wishlistData.map((item) => Product.fromJson(item)).toList();
+        // Создаем список продуктов из полученных данных
+        List<Product> wishlistProducts = wishlistData.map((item) => Product.fromJson(item)).toList();
 
-      // Обновляем состояние с учетом избранного
-      setState(() {
-        products.forEach((product) {
-          product.isLiked = wishlistProducts.any((wishlistProduct) => wishlistProduct.id == product.id);
+        // Обновляем состояние с учетом избранного
+        setState(() {
+          products.forEach((product) {
+            product.isLiked = wishlistProducts.any((wishlistProduct) => wishlistProduct.id == product.id);
+          });
         });
-      });
-    } else {
-      throw Exception('Не удалось загрузить wishlist: ${response.statusCode}');
+      } else {
+        throw Exception('Не удалось загрузить wishlist: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Ошибка при загрузке wishlist: $e');
     }
-  } catch (e) {
-    print('Ошибка при загрузке wishlist: $e');
   }
-}
+
+  Future<void> searchProducts() async {
+    String minPrice = _minPriceController.text.isNotEmpty ? _minPriceController.text : "";
+    String maxPrice = _maxPriceController.text.isNotEmpty ? _maxPriceController.text : "";
+    String url = 'http://localhost:8080/search-products?name=${name ?? ""}&description=${description ?? ""}&min_price=$minPrice&max_price=$maxPrice';
+    
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final decodedResponse = utf8.decode(response.bodyBytes);
+        final List<dynamic> data = json.decode(decodedResponse);
+        setState(() {
+          products = data.map((item) => Product.fromJson(item)).toList();
+        });
+      } else {
+        throw Exception('Не удалось загрузить продукты: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Ошибка при загрузке продуктов: $e');
+    }
+  }
+
+  void _onSearchChanged() {
+    name = _searchController.text.isNotEmpty ? _searchController.text : null;
+    description = null; // Уберите, если не нужно
+    searchProducts();
+  }
 
   Future<void> toggleFavorite(int productId) async {
     final response = await http.post(
@@ -204,6 +236,48 @@ Future<void> loadWishlist() async {
     return Scaffold(
       appBar: AppBar(
         title: Text(_selectedIndex == 0 ? 'Главная страница' : 'Избранное'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(100.0),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Поиск...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _minPriceController,
+                        decoration: InputDecoration(
+                          hintText: 'Мин. цена',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _maxPriceController,
+                        decoration: InputDecoration(
+                          hintText: 'Макс. цена',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       body: displayedProducts.isEmpty
           ? const Center(child: Text('Нет товаров для отображения'))
@@ -220,7 +294,7 @@ Future<void> loadWishlist() async {
                   isLiked: product.isLiked,
                   isInCart: product.isInCart,
                   productId: product.id,
-                  userId: userId ?? '', // Передаем userId
+                  userId: userId ?? '',
                   onTap: () {
                     Navigator.push(
                       context,

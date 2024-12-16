@@ -411,6 +411,72 @@ func getPersonalCart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(cart)
 }
 
+func searchProducts(w http.ResponseWriter, r *http.Request) {
+	// Получаем параметры запроса
+	name := r.URL.Query().Get("name")
+	description := r.URL.Query().Get("description")
+	minPrice := r.URL.Query().Get("min_price")
+	maxPrice := r.URL.Query().Get("max_price")
+
+	db, err := connectDB()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	// Создаем базовый SQL-запрос
+	query := "SELECT product_id, p_name, p_desc, p_cost, image_url, is_liked, is_in_cart FROM products WHERE 1=1"
+	var args []interface{}
+
+	// Добавляем условия фильтрации
+	if name != "" {
+		query += " AND p_name ILIKE $" + fmt.Sprintf("%d", len(args)+1)
+		args = append(args, "%"+name+"%")
+	}
+	if description != "" {
+		query += " AND p_desc ILIKE $" + fmt.Sprintf("%d", len(args)+1)
+		args = append(args, "%"+description+"%")
+	}
+	if minPrice != "" {
+		query += " AND p_cost >= $" + fmt.Sprintf("%d", len(args)+1)
+		args = append(args, minPrice)
+	}
+	if maxPrice != "" {
+		query += " AND p_cost <= $" + fmt.Sprintf("%d", len(args)+1)
+		args = append(args, maxPrice)
+	}
+
+	// Выполняем запрос
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var products []Product
+	for rows.Next() {
+		var product Product
+		if err := rows.Scan(&product.ID, &product.Name, &product.Description, &product.Price, &product.ImageUrl, &product.IsLiked, &product.IsInCart); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		products = append(products, product)
+	}
+
+	// Проверяем наличие ошибок после завершения перебора строк
+	if err := rows.Err(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Устанавливаем заголовок ответа и возвращаем список
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(products)
+}
+
 func main() {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:65044", "http://localhost:63068"}, // Добавьте ваш фронтенд
@@ -427,7 +493,7 @@ func main() {
 	mux.HandleFunc("/add-cart", addToCart)
 	mux.HandleFunc("/remove-cart", removeFromCart)
 	mux.HandleFunc("/show-personal-cart", getPersonalCart)
-
+	mux.HandleFunc("/search-products", searchProducts)
 	// mux.HandleFunc("/products/in-cart", getProductsInCart) // Новый маршрут для товаров в корзине
 
 	// mux.HandleFunc("/toggle-cart", toggleCart)
