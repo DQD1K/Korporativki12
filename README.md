@@ -18,7 +18,7 @@
 Написана функция отвечающая за фильтрацию и поиск
 
 
-func searchProducts(w http.ResponseWriter, r *http.Request) {
+`func searchProducts(w http.ResponseWriter, r *http.Request) {
 	// Получаем параметры запроса
 	name := r.URL.Query().Get("name")
 	description := r.URL.Query().Get("description")
@@ -83,10 +83,7 @@ func searchProducts(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(products)
 
-
-
-
-}
+}`
 
 
  ![image](https://github.com/user-attachments/assets/850cd036-16f4-472a-9b0d-e4e48f9ef6fa)
